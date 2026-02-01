@@ -1,1 +1,30 @@
+# Sensitive Data
 Secrets.h
+
+# macOS System Files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Arduino / PlatformIO Build Artifacts
+.pio/
+.pioenvs/
+.build/
+output/
+*.bin
+*.elf
+*.hex
+*.map
+
+# Editor / IDE Settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

@@ -6,16 +6,23 @@ extern TFT_eSPI lcd;
 time_t NWManager::lastNtpSyncTime = 0;
 
 // ...
+void NWManager::init() {
+    WiFi.mode(WIFI_STA);
+    // connect=falseを指定してハードウェア初期化のみ行う（LCD初期化前のピン破壊をここで済ませる）
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD, 0, NULL, false);
+}
+
 void NWManager::connectWiFi() {
     Serial.println("Connecting to WiFi");
-    for (int i = 0; i < 10; i++) {
-        delay(100);
-        Serial.print('.');
-    }   
     
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    // 接続プロセスを実際に開始する
+    // すでにinit()で情報は渡っているため、再接続または接続開始をトリガー
+    WiFi.reconnect(); 
+
+    lcd.println("Connecting WiFi...");
     
+    WiFi.setAutoReconnect(true);
+
     // Attempt to connect
     for (int i = 0; i < 20; i++) {
         if (WiFi.status() == WL_CONNECTED) {
@@ -23,20 +30,25 @@ void NWManager::connectWiFi() {
         } else {
             delay(500);
             Serial.print('.');
+            lcd.print(".");
         }
     }
 
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println("\r\nWiFi connected");
+        lcd.println(" Connected!");
         
         Serial.print("IP address: ");
         Serial.println(WiFi.localIP());
         
         // Wait a bit to show the IP address
         delay(2000);
+        
+        lcd.println("IP: " + WiFi.localIP().toString());
 
         // setup time
         Serial.println("Setup time");
+        lcd.println("Syncing Time...");
         if (setupTime()) {
             lastNtpSyncTime = time(NULL);
         }
@@ -46,6 +58,8 @@ void NWManager::connectWiFi() {
         // WiFi.mode(WIFI_OFF);
     } else {
         Serial.println("\nWiFi connection failed.");
+        lcd.println(" Failed!");
+        delay(2000);
     }
 }
 

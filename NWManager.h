@@ -7,6 +7,7 @@
 
 class NWManager {
 public:
+    static void init();
     static void connectWiFi();
     static bool setupTime();
 

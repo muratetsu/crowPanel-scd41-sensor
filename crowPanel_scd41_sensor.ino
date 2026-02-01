@@ -113,9 +113,9 @@ void setBacklightBrightness(uint8_t brightness) {
 void setup() {
   Serial.begin(115200);
 
-  // WiFi.begin()を実行するとなぜかLCDが正常に動作しなくなるので先にWiFiを接続する
-  NWManager::connectWiFi();
-
+  // 1. WiFiのハードウェア初期化のみ行う (LCDのピン設定が破壊される可能性があるため最初に行う)
+  NWManager::init();
+  
   //Display Prepare
   lcd.begin();
   lcd.setRotation(3); 
@@ -130,6 +130,10 @@ void setup() {
   lcd.println("Initialize SCD41");
 
   scd4xInit();
+
+  // 2. WiFi接続開始 (LCDに状況を表示する)
+  // すでにハードウェア初期化は済んでいるためピン設定は破壊されないはず
+  NWManager::connectWiFi();
 
   // Draw display
   UIManager::drawInitialLabels();

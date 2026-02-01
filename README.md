@@ -9,7 +9,7 @@ CrowPanel ESP32 HMI 2.4インチディスプレイとSCD41センサーを使用�
 *   **WiFi接続**: 起動時にWiFiへ接続し、NTPサーバーから正確な時刻を取得・同期。
 
 ## ハードウェア構成
-*   **メインボード**: [CrowPanel ESP32 HMI 2.4-inch Display](https://www.elecrow.com/esp32-display-2-4-inch-hmi-touch-screen-arduino-lvgl.html)
+*   **メインボード**: [CrowPanel ESP32 HMI 2.4-inch Display](https://www.elecrow.com/esp32-display-2-4-inch-intelligent-spi-tft-lcd-touch-screen-hmi-display.html)
 *   **センサー**: Sensirion SCD41 (I2C接続)
 
 ## 必要なライブラリ

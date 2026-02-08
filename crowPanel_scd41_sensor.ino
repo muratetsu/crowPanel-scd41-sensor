@@ -17,6 +17,15 @@
 #include "Graph.h"
 #include "NWManager.h"
 #include "UIManager.h"
+#include <SD.h>
+#include <FS.h>
+
+#define SD_MOSI 23
+#define SD_MISO 19
+#define SD_SCK 18
+#define SD_CS_PIN 5
+
+SPIClass SD_SPI;
 
 // Graph size
 #define GRAPH_WIDTH 268
@@ -138,6 +147,13 @@ void setup() {
   // Draw display
   UIManager::drawInitialLabels();
   graph.begin(&lcd, GRAPH_WIDTH, GRAPH_HIGHT, GRAPH_XMIN, GRAPH_YMIN, GRAPH_YGRID, COLOR_CO2, COLOR_TEMP, COLOR_HUMID);
+
+  SD_SPI.begin(SD_SCK, SD_MISO, SD_MOSI);
+  if (!SD.begin(SD_CS_PIN, SD_SPI, 40000000)) {
+    Serial.println("SD Card Mount Failed");
+  } else {
+    Serial.println("SD Card Initialized");
+  }
 }
 
 /**
@@ -191,6 +207,21 @@ void processMinuteUpdate(struct tm *timeinfo) {
 
       graph.add(co2, temperature, humidity);
       graph.plot(timeinfo, 7);
+
+      // Save log to SD card
+      char logFileName[24];
+      strftime(logFileName, sizeof(logFileName), "/%Y%m%d.csv", timeinfo);
+
+      File file = SD.open(logFileName, FILE_APPEND);
+      if (file) {
+        char timeStr[20];
+        strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", timeinfo);
+        file.printf("%s, %d, %.2f, %.2f\n", timeStr, co2, temperature, humidity);
+        file.close();
+      } else {
+        Serial.print("Failed to open log file: ");
+        Serial.println(logFileName);
+      }
 
       co2Sum = 0;
       tempSum = 0;

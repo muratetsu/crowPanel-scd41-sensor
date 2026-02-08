@@ -180,6 +180,14 @@ void setup() {
   graph.begin(&lcd, GRAPH_WIDTH, GRAPH_HIGHT, GRAPH_XMIN, GRAPH_YMIN, GRAPH_YGRID, COLOR_CO2, COLOR_TEMP, COLOR_HUMID);
 
   initSD();
+
+  // Wait for time synchronization and load history
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+      loadHistoryFromSD(&timeinfo);
+  } else {
+      Serial.println("Failed to obtain time");
+  }
 }
 
 /**
@@ -243,6 +251,108 @@ void processMinuteUpdate(struct tm *timeinfo) {
       numSum = 0;
     }
   }
+}
+
+/**
+ * @brief Load history data from SD card (last 5 hours)
+ */
+void loadHistoryFromSD(struct tm *now) {
+  time_t t_now = mktime(now);
+  time_t t_scan = t_now - (5 * 3600); // Start from 5 hours ago
+  time_t t_last_added = t_scan - 60;  // Track last added time
+  
+  // We need to check potentially two files: Yesterday and Today
+  // Logic: Iterate from start time to now, checking files
+  
+  // Simple approach: Iterate through minutes? No, too slow.
+  // Better: Identify relevant files and scan them.
+  
+  time_t t_current_day = t_scan;
+  while (t_current_day <= t_now) {
+    struct tm *tm_current = localtime(&t_current_day);
+    char logFileName[24];
+    strftime(logFileName, sizeof(logFileName), "/%Y%m%d.csv", tm_current);
+    
+    // Store current scan year/month/day to calculating next day later
+    struct tm start_of_day = *tm_current;
+
+    File file = SD.open(logFileName, FILE_READ);
+    if (file) {
+      Serial.print("Loading log: ");
+      Serial.println(logFileName);
+      
+      while (file.available()) {
+        String line = file.readStringUntil('\n');
+        if (line.length() < 20) continue; // Skip empty or short lines
+        
+        // Parse line: YYYY-MM-DD HH:MM:SS, co2, temp, humid
+        // Example: 2026-02-08 10:10:02, 800, 25.50, 45.20
+        int year, month, day, hour, minute, second;
+        int co2;
+        float temp, humid;
+        
+        // Use sscanf to parse
+        char timeStr[24];
+        // We can just parse the first part as string if needed, or parse all
+        // Log format: "%s, %d, %.2f, %.2f\n" where %s is "%Y-%m-%d %H:%M:%S"
+        // sscanf format: "%d-%d-%d %d:%d:%d, %d, %f, %f"
+        
+        int items = sscanf(line.c_str(), "%d-%d-%d %d:%d:%d, %d, %f, %f", 
+                           &year, &month, &day, &hour, &minute, &second, 
+                           &co2, &temp, &humid);
+                           
+        if (items >= 9) {
+          struct tm tm_line = {0};
+          tm_line.tm_year = year - 1900;
+          tm_line.tm_mon = month - 1;
+          tm_line.tm_mday = day;
+          tm_line.tm_hour = hour;
+          tm_line.tm_min = minute;
+          tm_line.tm_sec = second;
+          tm_line.tm_isdst = -1;
+          
+          time_t t_line = mktime(&tm_line);
+          
+          if (t_line < t_scan) continue; // Too old
+          if (t_line > t_now) break;     // Future (relative to now)
+          
+          // Fill gaps with invalid data
+          // If t_line is more than 1 minute after t_last_added
+          while (difftime(t_line, t_last_added) > 90) { // Tolerance > 1.5 min
+             t_last_added += 60;
+             if (t_last_added >= t_line) break;
+             graph.add(GRAPH_INVALID_VALUE, GRAPH_INVALID_VALUE, GRAPH_INVALID_VALUE);
+          }
+          
+          // Add valid data
+          graph.add((float)co2, temp, humid);
+          t_last_added = t_line;
+        }
+      }
+      file.close();
+    }
+    
+    // Advance to next day approx (add 20 hours to be safe to cross midnight from any start point)
+    // Actually, just incrementing day is safer logic-wise outside.
+    // simpler: if file was yesterday, check today.
+    
+    // Move to next day (00:00:00)
+    start_of_day.tm_mday += 1;
+    start_of_day.tm_hour = 0;
+    start_of_day.tm_min = 0;
+    start_of_day.tm_sec = 0;
+    start_of_day.tm_isdst = -1;
+    t_current_day = mktime(&start_of_day);
+  }
+  
+  // Fill remaining gap to now
+  while (difftime(t_now, t_last_added) > 90) {
+     t_last_added += 60;
+     graph.add(GRAPH_INVALID_VALUE, GRAPH_INVALID_VALUE, GRAPH_INVALID_VALUE);
+  }
+  
+  // Update graph once
+  graph.plot(now, 7);
 }
 
 void loop() {

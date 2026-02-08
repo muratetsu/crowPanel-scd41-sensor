@@ -142,15 +142,30 @@ void Graph::drawline(float* values, uint16_t ystep, uint32_t color, boolean labe
     }
 
     // draw line
+    // Iterate through the buffer from newest (_wp - 1) backwards to oldest (_rp)
+    // to map to screen X coordinates.
+    // i represents the pixel offset from the right edge of the graph area.
+    
     for (int i = 0, pt = (_wp - 1 + BUF_SIZE) & BUF_MASK; i < ((_wp - _rp + BUF_SIZE) & BUF_MASK); i++) {
-        y = _ymid - _ygrid * (values[pt] - offset) / ystep;
-        pt--;
-        pt &= BUF_MASK;
-
-        if (y > _ymin && y < _ymax) {
-            // Draw relative to _xmin + _width
-            _spr->drawLine(_xmin + _width - 1 - i, y - 1, _xmin + _width - 1 - i, y + 1, color);
+        
+        float val = values[pt];
+        
+        // Skip if current value is invalid
+        if (val != GRAPH_INVALID_VALUE) {
+             // Calculate Y position
+             float y_float = _ymid - _ygrid * (val - offset) / ystep;
+             
+             // Check bounds
+             if (y_float > _ymin && y_float < _ymax) {
+                 y = (uint16_t)y_float;
+                 
+                 // Draw a small vertical bar (3 pixels high) for scatter plot visibility
+                 _spr->drawLine(_xmin + _width - 1 - i, y - 1, _xmin + _width - 1 - i, y + 1, color);
+             }
         }
+        
+        // Move to the previous point in the circular buffer
+        pt = (pt - 1 + BUF_SIZE) & BUF_MASK;
     }
 
     if (label) {
@@ -172,11 +187,16 @@ float Graph::getOffset(float* value) {
     if (_rp == _wp) return 0; // Empty
 
     while (n != _wp) {
-        if (value[n] < vmin) vmin = value[n];
-        if (value[n] > vmax) vmax = value[n];
+        float val = value[n];
+        if (val != GRAPH_INVALID_VALUE) {
+            if (val < vmin) vmin = val;
+            if (val > vmax) vmax = val;
+        }
         n++;
         n &= BUF_MASK;
     }
+
+    if (vmin == FLT_MAX || vmax == -FLT_MAX) return 0; // No valid data
 
     return (vmin + vmax) / 2;
 }

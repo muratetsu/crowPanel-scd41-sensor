@@ -10,6 +10,7 @@
 
 #define BUF_SIZE  512
 #define BUF_MASK  (BUF_SIZE - 1)
+#define GRAPH_INVALID_VALUE -999.0f
 
 class Graph {
   public:

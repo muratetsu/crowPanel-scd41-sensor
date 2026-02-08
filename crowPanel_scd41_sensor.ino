@@ -150,109 +150,6 @@ void writeLog(struct tm *timeinfo, uint16_t co2, float temperature, float humidi
   }
 }
 
-void setup() {
-  Serial.begin(115200);
-
-  // 1. WiFiのハードウェア初期化のみ行う (LCDのピン設定が破壊される可能性があるため最初に行う)
-  NWManager::init();
-  
-  //Display Prepare
-  lcd.begin();
-  lcd.setRotation(3); 
-  lcd.fillScreen(TFT_BLACK);
-
-  // Configure PWM for backlight (Must be done AFTER lcd.begin() because TFT_eSPI resets the pin)
-  ledcAttach(BACKLIGHT_PIN, PWM_FREQ, PWM_RESOLUTION);
-  ledcWrite(BACKLIGHT_PIN, 96); // Initial brightness (0-255)
-  
-  lcd.setTextSize(1);
-  lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-  lcd.println("Initialize SCD41");
-
-  scd4xInit();
-
-  // 2. WiFi接続開始 (LCDに状況を表示する)
-  // すでにハードウェア初期化は済んでいるためピン設定は破壊されないはず
-  NWManager::connectWiFi();
-
-  // Draw display
-  UIManager::drawInitialLabels();
-  graph.begin(&lcd, GRAPH_WIDTH, GRAPH_HIGHT, GRAPH_XMIN, GRAPH_YMIN, GRAPH_YGRID, COLOR_CO2, COLOR_TEMP, COLOR_HUMID);
-
-  initSD();
-
-  // Wait for time synchronization and load history
-  struct tm timeinfo;
-  if (getLocalTime(&timeinfo)) {
-      loadHistoryFromSD(&timeinfo);
-  } else {
-      Serial.println("Failed to obtain time");
-  }
-}
-
-/**
- * @brief センサーデータの取得と蓄積 (5秒毎)
- */
-void processSensorData(struct tm *timeinfo) {
-  static int prevSecond = 0;
-
-  if ((timeinfo->tm_sec - prevSecond + 60) % 60 >= 5) {
-    prevSecond = timeinfo->tm_sec;
-    uint16_t co2 = 0;
-    float temperature = 0.0f;
-    float humidity = 0.0f;
-    uint16_t error;
-
-    UIManager::clearStatus();
-
-    // Read Measurement
-    error = scd4x.readMeasurement(co2, temperature, humidity);
-    if (error) {
-      UIManager::showStatus("Error: ", error);
-    } else if (co2 == 0) {
-      UIManager::showStatus("Invalid sample detected", 0);
-    } else {
-      UIManager::updateMeasurement(co2, temperature, humidity);
-
-      co2Sum += co2;
-      tempSum += temperature;
-      humidSum += humidity;
-      numSum++;
-    }
-  }
-}
-
-/**
- * @brief 定期的な更新処理 (1分毎)
- * グラフ更新、ログ保存、平均値計算
- */
-void processMinuteUpdate(struct tm *timeinfo) {
-  static int prevMinute = 0;
-
-  if (prevMinute != timeinfo->tm_min) {
-    prevMinute = timeinfo->tm_min;
-    UIManager::updateTime(timeinfo);
-
-    if (numSum != 0) {
-      uint16_t co2 = co2Sum / numSum;
-      float temperature = tempSum / numSum;
-      float humidity = humidSum / numSum;
-      char strBuf[256];
-
-      graph.add(co2, temperature, humidity);
-      graph.plot(timeinfo, 7);
-
-      // Save log to SD card
-      writeLog(timeinfo, co2, temperature, humidity);
-
-      co2Sum = 0;
-      tempSum = 0;
-      humidSum = 0;
-      numSum = 0;
-    }
-  }
-}
-
 /**
  * @brief Load history data from SD card (last 5 hours)
  */
@@ -353,6 +250,109 @@ void loadHistoryFromSD(struct tm *now) {
   
   // Update graph once
   graph.plot(now, 7);
+}
+
+/**
+ * @brief センサーデータの取得と蓄積 (5秒毎)
+ */
+void processSensorData(struct tm *timeinfo) {
+  static int prevSecond = 0;
+
+  if ((timeinfo->tm_sec - prevSecond + 60) % 60 >= 5) {
+    prevSecond = timeinfo->tm_sec;
+    uint16_t co2 = 0;
+    float temperature = 0.0f;
+    float humidity = 0.0f;
+    uint16_t error;
+
+    UIManager::clearStatus();
+
+    // Read Measurement
+    error = scd4x.readMeasurement(co2, temperature, humidity);
+    if (error) {
+      UIManager::showStatus("Error: ", error);
+    } else if (co2 == 0) {
+      UIManager::showStatus("Invalid sample detected", 0);
+    } else {
+      UIManager::updateMeasurement(co2, temperature, humidity);
+
+      co2Sum += co2;
+      tempSum += temperature;
+      humidSum += humidity;
+      numSum++;
+    }
+  }
+}
+
+/**
+ * @brief 定期的な更新処理 (1分毎)
+ * グラフ更新、ログ保存、平均値計算
+ */
+void processMinuteUpdate(struct tm *timeinfo) {
+  static int prevMinute = 0;
+
+  if (prevMinute != timeinfo->tm_min) {
+    prevMinute = timeinfo->tm_min;
+    UIManager::updateTime(timeinfo);
+
+    if (numSum != 0) {
+      uint16_t co2 = co2Sum / numSum;
+      float temperature = tempSum / numSum;
+      float humidity = humidSum / numSum;
+      char strBuf[256];
+
+      graph.add(co2, temperature, humidity);
+      graph.plot(timeinfo, 7);
+
+      // Save log to SD card
+      writeLog(timeinfo, co2, temperature, humidity);
+
+      co2Sum = 0;
+      tempSum = 0;
+      humidSum = 0;
+      numSum = 0;
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // 1. WiFiのハードウェア初期化のみ行う (LCDのピン設定が破壊される可能性があるため最初に行う)
+  NWManager::init();
+  
+  //Display Prepare
+  lcd.begin();
+  lcd.setRotation(3); 
+  lcd.fillScreen(TFT_BLACK);
+
+  // Configure PWM for backlight (Must be done AFTER lcd.begin() because TFT_eSPI resets the pin)
+  ledcAttach(BACKLIGHT_PIN, PWM_FREQ, PWM_RESOLUTION);
+  ledcWrite(BACKLIGHT_PIN, 96); // Initial brightness (0-255)
+  
+  lcd.setTextSize(1);
+  lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+  lcd.println("Initialize SCD41");
+
+  scd4xInit();
+
+  // 2. WiFi接続開始 (LCDに状況を表示する)
+  // すでにハードウェア初期化は済んでいるためピン設定は破壊されないはず
+  NWManager::connectWiFi();
+
+  // Draw display
+  UIManager::drawInitialLabels();
+  graph.begin(&lcd, GRAPH_WIDTH, GRAPH_HIGHT, GRAPH_XMIN, GRAPH_YMIN, GRAPH_YGRID, COLOR_CO2, COLOR_TEMP, COLOR_HUMID);
+
+  initSD();
+
+  // Wait for time synchronization and load history
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+      loadHistoryFromSD(&timeinfo);
+  } else {
+      Serial.println("Failed to obtain time");
+  }
 }
 
 void loop() {

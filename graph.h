@@ -33,8 +33,7 @@ class Graph {
   uint32_t _crVal3;
   float _val1[BUF_SIZE];
   float _val2[BUF_SIZE];
-  float _val3[BUF_SIZE];
-  uint16_t _rp;
+  float _val3[BUF_SIZE]; 
   uint16_t _wp;
   uint16_t _screen_ymin;
   void drawline(float* values, uint16_t ystep, uint32_t color, boolean label, uint16_t labelPos);

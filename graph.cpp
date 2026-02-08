@@ -26,10 +26,14 @@ Graph::Graph() {}
  * and colors for each values.
  */
 void Graph::begin(TFT_eSPI *tft, uint16_t width, uint16_t height, uint16_t xmin, uint16_t ymin, uint16_t ygrid, uint32_t crVal1, uint32_t crVal2, uint32_t crVal3) {
-    memset(_val1, 0, sizeof(_val1));
-    memset(_val2, 0, sizeof(_val2));
-    memset(_val3, 0, sizeof(_val3));
-    _wp = _rp = 0;
+    // Initialize buffers with INVALID value
+    for (int i = 0; i < BUF_SIZE; i++) {
+        _val1[i] = GRAPH_INVALID_VALUE;
+        _val2[i] = GRAPH_INVALID_VALUE;
+        _val3[i] = GRAPH_INVALID_VALUE;
+    }
+
+    _wp = 0;
     _width = width;
     _height = height;
     _xmin = xmin;
@@ -58,11 +62,6 @@ void Graph::add(float val1, float val2, float val3) {
     _val3[_wp] = val3;
     _wp++;
     _wp &= BUF_MASK;
-
-    if (((_wp - _rp) & BUF_MASK) > _width) {
-        _rp++;
-        _rp &= BUF_MASK;
-    }
 }
 
 /**
@@ -118,35 +117,39 @@ void Graph::drawline(float* values, uint16_t ystep, uint32_t color, boolean labe
     // Serial.printf("drawline: %x %d\n", color, label);
 
     float offset = getOffset(values);
-    uint16_t y;
+    uint16_t x, y;
 
-    // check if the latest point is out of range
-    float dataSpan = _height * ystep / _ygrid;
-    float offsetLow = values[_wp ? _wp - 1 : BUF_SIZE - 1] - dataSpan / 2;
-    float offsetHigh = values[_wp ? _wp - 1 : BUF_SIZE - 1] + dataSpan / 2;
+    // Check if the latest point is out of visible range.
+    // Basically, we center the graph based on min/max of all data.
+    // However, if the data spread exceeds the screen height, the latest value might be cut off.
+    // In that case, adjust the offset to ensure the latest value is visible.
     
-    if (_wp == _rp && _wp == 0) return; 
-
     int latestIdx = (_wp - 1 + BUF_SIZE) & BUF_MASK;
-    offsetLow = values[latestIdx] - dataSpan / 2;
-    offsetHigh = values[latestIdx] + dataSpan / 2;
+    float latestVal = values[latestIdx];
+    
+    if (latestVal != GRAPH_INVALID_VALUE) {
+        float dataSpan = _height * ystep / _ygrid;
+        float offsetLow = latestVal - dataSpan / 2;
+        float offsetHigh = latestVal + dataSpan / 2;
 
-    if (offset < offsetLow) {
-        offset = ceilf(offsetLow / ystep) * ystep;
-    }
-    else if (offset > offsetHigh) {
-        offset = floorf(offsetHigh / ystep) * ystep;
-    }
-    else {
-        offset = roundf(offset / ystep) * ystep; 
+        if (offset < offsetLow) {
+            offset = ceilf(offsetLow / ystep) * ystep;
+        }
+        else if (offset > offsetHigh) {
+            offset = floorf(offsetHigh / ystep) * ystep;
+        }
+        else {
+            offset = roundf(offset / ystep) * ystep; 
+        }
     }
 
     // draw line
-    // Iterate through the buffer from newest (_wp - 1) backwards to oldest (_rp)
+    // Iterate through the buffer from newest (_wp - 1) backwards
     // to map to screen X coordinates.
     // i represents the pixel offset from the right edge of the graph area.
     
-    for (int i = 0, pt = (_wp - 1 + BUF_SIZE) & BUF_MASK; i < ((_wp - _rp + BUF_SIZE) & BUF_MASK); i++) {
+    // Always iterate _width times (fixed window)
+    for (int i = 0, pt = (_wp - 1 + BUF_SIZE) & BUF_MASK; i < _width; i++) {
         
         float val = values[pt];
         
@@ -157,10 +160,11 @@ void Graph::drawline(float* values, uint16_t ystep, uint32_t color, boolean labe
              
              // Check bounds
              if (y_float > _ymin && y_float < _ymax) {
-                 y = (uint16_t)y_float;
+                x = _xmin + _width - 1 - i;
+                y = (uint16_t)y_float;
                  
                  // Draw a small vertical bar (3 pixels high) for scatter plot visibility
-                 _spr->drawLine(_xmin + _width - 1 - i, y - 1, _xmin + _width - 1 - i, y + 1, color);
+                 _spr->drawLine(x, y - 1, x, y + 1, color);
              }
         }
         
@@ -180,20 +184,17 @@ void Graph::drawline(float* values, uint16_t ystep, uint32_t color, boolean labe
 }
 
 float Graph::getOffset(float* value) {
-    int n = _rp;
     float vmin = FLT_MAX;
-    float vmax = -FLT_MAX; // Fixed from FLT_MIN (which is smallest positive normalized float)
+    float vmax = -FLT_MAX;
 
-    if (_rp == _wp) return 0; // Empty
-
-    while (n != _wp) {
-        float val = value[n];
+    // Scan the last _width items
+    for (int i = 0, pt = (_wp - 1 + BUF_SIZE) & BUF_MASK; i < _width; i++) {
+        float val = value[pt];
         if (val != GRAPH_INVALID_VALUE) {
             if (val < vmin) vmin = val;
             if (val > vmax) vmax = val;
         }
-        n++;
-        n &= BUF_MASK;
+        pt = (pt - 1 + BUF_SIZE) & BUF_MASK;
     }
 
     if (vmin == FLT_MAX || vmax == -FLT_MAX) return 0; // No valid data

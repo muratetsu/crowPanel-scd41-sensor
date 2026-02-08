@@ -119,6 +119,37 @@ void setBacklightBrightness(uint8_t brightness) {
   ledcWrite(BACKLIGHT_PIN, brightness);
 }
 
+/**
+ * @brief Initialize SD card
+ */
+void initSD() {
+  SD_SPI.begin(SD_SCK, SD_MISO, SD_MOSI);
+  if (!SD.begin(SD_CS_PIN, SD_SPI, 40000000)) {
+    Serial.println("SD Card Mount Failed");
+  } else {
+    Serial.println("SD Card Initialized");
+  }
+}
+
+/**
+ * @brief Write logs to SD card
+ */
+void writeLog(struct tm *timeinfo, uint16_t co2, float temperature, float humidity) {
+  char logFileName[24];
+  strftime(logFileName, sizeof(logFileName), "/%Y%m%d.csv", timeinfo);
+
+  File file = SD.open(logFileName, FILE_APPEND);
+  if (file) {
+    char timeStr[20];
+    strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", timeinfo);
+    file.printf("%s, %d, %.2f, %.2f\n", timeStr, co2, temperature, humidity);
+    file.close();
+  } else {
+    Serial.print("Failed to open log file: ");
+    Serial.println(logFileName);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -148,12 +179,7 @@ void setup() {
   UIManager::drawInitialLabels();
   graph.begin(&lcd, GRAPH_WIDTH, GRAPH_HIGHT, GRAPH_XMIN, GRAPH_YMIN, GRAPH_YGRID, COLOR_CO2, COLOR_TEMP, COLOR_HUMID);
 
-  SD_SPI.begin(SD_SCK, SD_MISO, SD_MOSI);
-  if (!SD.begin(SD_CS_PIN, SD_SPI, 40000000)) {
-    Serial.println("SD Card Mount Failed");
-  } else {
-    Serial.println("SD Card Initialized");
-  }
+  initSD();
 }
 
 /**
@@ -209,19 +235,7 @@ void processMinuteUpdate(struct tm *timeinfo) {
       graph.plot(timeinfo, 7);
 
       // Save log to SD card
-      char logFileName[24];
-      strftime(logFileName, sizeof(logFileName), "/%Y%m%d.csv", timeinfo);
-
-      File file = SD.open(logFileName, FILE_APPEND);
-      if (file) {
-        char timeStr[20];
-        strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", timeinfo);
-        file.printf("%s, %d, %.2f, %.2f\n", timeStr, co2, temperature, humidity);
-        file.close();
-      } else {
-        Serial.print("Failed to open log file: ");
-        Serial.println(logFileName);
-      }
+      writeLog(timeinfo, co2, temperature, humidity);
 
       co2Sum = 0;
       tempSum = 0;

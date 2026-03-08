@@ -35,9 +35,13 @@ SPIClass SD_SPI;
 #define GRAPH_YGRID 20
 
 // Backlight definitions
-#define BACKLIGHT_PIN 27
-#define PWM_FREQ 5000
-#define PWM_RESOLUTION 8
+#define BACKLIGHT_PIN       27
+#define PWM_FREQ            5000
+#define PWM_RESOLUTION      8
+#define BRIGHTNESS_DAY      128   // 昼間輝度 (6:00〜22:00)
+#define BRIGHTNESS_NIGHT    16    // 夜間輝度 (22:00〜6:00)
+#define BACKLIGHT_HOUR_DAWN 6     // 夜間→昼間切替時刻
+#define BACKLIGHT_HOUR_DUSK 22    // 昼間→夜間切替時刻
 
 TFT_eSPI lcd = TFT_eSPI();
 SensirionI2cScd4x scd4x;
@@ -294,6 +298,20 @@ void processSensorData(struct tm *timeinfo) {
 }
 
 /**
+ * @brief 時刻に応じてバックライト輝度を調整する
+ * 22:00〜6:00: 輝度16 (夜間)
+ *  6:00〜22:00: 輝度128 (昼間)
+ */
+void updateBacklightBrightness(struct tm *timeinfo) {
+  int hour = timeinfo->tm_hour;
+  if (hour >= BACKLIGHT_HOUR_DUSK || hour < BACKLIGHT_HOUR_DAWN) {
+    setBacklightBrightness(BRIGHTNESS_NIGHT);  // 夜間: 暗め
+  } else {
+    setBacklightBrightness(BRIGHTNESS_DAY);    // 昼間: 通常
+  }
+}
+
+/**
  * @brief 定期的な更新処理 (1分毎)
  * グラフ更新、ログ保存、平均値計算
  */
@@ -303,6 +321,7 @@ void processMinuteUpdate(struct tm *timeinfo) {
   if (prevMinute != timeinfo->tm_min) {
     prevMinute = timeinfo->tm_min;
     UIManager::updateTime(timeinfo);
+    updateBacklightBrightness(timeinfo);
 
     if (numSum != 0) {
       uint16_t co2 = co2Sum / numSum;
@@ -337,7 +356,7 @@ void setup() {
 
   // Configure PWM for backlight (Must be done AFTER lcd.begin() because TFT_eSPI resets the pin)
   ledcAttach(BACKLIGHT_PIN, PWM_FREQ, PWM_RESOLUTION);
-  ledcWrite(BACKLIGHT_PIN, 96); // Initial brightness (0-255)
+  ledcWrite(BACKLIGHT_PIN, BRIGHTNESS_DAY); // Initial brightness
   
   lcd.setTextSize(1);
   lcd.setTextColor(TFT_WHITE, TFT_BLACK);
